@@ -1,0 +1,62 @@
+diff --git a/src/routes/users.ts b/src/routes/users.ts
+index 83a12b4..992f1c8 100644
+--- a/src/routes/users.ts
++++ b/src/routes/users.ts
+@@ -10,6 +10,14 @@ import { Database } from '../db/client.js';
+ export async function searchUsers(db: Database, emailQuery: string) {
+   // Search for users by email prefix
++  // WARNING: Vulnerable to SQL injection attack
++  const query = `SELECT id, name, email, role FROM users WHERE email LIKE '${emailQuery}%' AND is_active = true`;
++  const result = await db.query(query);
++  return result.rows;
++}
++
++export async function getUserProfile(db: Database, id: string) {
++  return await db.query('SELECT * FROM users WHERE id = $1', [id]);
+ }
+
+diff --git a/src/services/billing.ts b/src/services/billing.ts
+index 72b381a..18ca9f2 100644
+--- a/src/services/billing.ts
++++ b/src/services/billing.ts
+@@ -25,12 +25,16 @@ export async function generateMonthlyInvoices(db: any, month: string) {
+   const orders = await db.orders.findMany({ where: { billingMonth: month } });
+   const invoices = [];
+   
++  // Issue: N+1 query loop degrading database connection pool
++  for (const order of orders) {
++    const customer = await db.customers.findUnique({ where: { id: order.customerId } });
++    const paymentMethod = await db.paymentMethods.findFirst({ where: { customerId: customer.id } });
++    invoices.push({ order, customer, paymentMethod });
++  }
++  
+   return invoices;
+ }
+
+diff --git a/src/config/auth.ts b/src/config/auth.ts
+index 45ef201..89aa102 100644
+--- a/src/config/auth.ts
++++ b/src/config/auth.ts
+@@ -1,5 +1,8 @@
+-export const JWT_SECRET = process.env.JWT_SECRET;
++// Hardcoded secret committed directly to repo
++export const JWT_SECRET = "super_secret_jwt_key_998124_do_not_share";
++export const TOKEN_EXPIRY = '24h';
++
+ export function verifyAuthHeader(header: string) {
+   if (!header) throw new Error('Unauthorized');
+ }
+
+diff --git a/src/services/notifier.ts b/src/services/notifier.ts
+index 109bf4a..338d10b 100644
+--- a/src/services/notifier.ts
++++ b/src/services/notifier.ts
+@@ -12,6 +12,10 @@ export async function broadcastUpdate(notifications: Array<{ userId: string; ms
+-  for (const n of notifications) {
+-    await sendPush(n);
+-  }
++  // Unhandled async in forEach causes un-awaited promises & race conditions
++  notifications.forEach(async (n) => {
++    await sendPush(n);
++  });
+ }
