@@ -5,24 +5,35 @@ import { config } from './config/env.js';
 import { ReviewPipelineOrchestrator } from './orchestrator/pipeline.js';
 import { GitHubWebhookHandler } from './github/webhook-handler.js';
 import { GitHubClient } from './github/octokit-client.js';
-import { RepoMemoryStore } from './db/repo-memory.js';
+import { SarifExporter } from './security/sarif-exporter.js';
+import { PolicyEngine } from './policy/policy-engine.js';
+import { ModelArenaBenchmark } from './ai/model-arena.js';
 
 const app = new Hono();
 
 app.use('*', cors());
 
-// Health Check
+// 1. Health Check
 app.get('/health', (c) => {
   return c.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: '2.0.0',
+    capabilities: [
+      'multi_agent_review',
+      'ast_chunking',
+      'auto_remediation',
+      'sarif_export',
+      'blast_radius_graph',
+      'policy_studio',
+      'model_arena_benchmark'
+    ],
     llmProvider: config.DEFAULT_LLM_PROVIDER,
     model: config.AI_MODEL_NAME,
   });
 });
 
-// API Review Endpoint
+// 2. API Review Endpoint
 app.post('/api/review', async (c) => {
   try {
     const body = await c.req.json();
@@ -32,13 +43,11 @@ app.post('/api/review', async (c) => {
       return c.json({ error: 'Diff content is required' }, 400);
     }
 
-    const guidelines = await RepoMemoryStore.getApplicableGuidelines(repoName);
     const result = await ReviewPipelineOrchestrator.execute(diff, {
       prId: prId || `PR-${Math.floor(1000 + Math.random() * 9000)}`,
       repoName: repoName || 'organization/repository',
       prTitle: prTitle || 'Pull Request Review',
       prAuthor: prAuthor || 'contributor',
-      guidelines,
     });
 
     return c.json(result);
@@ -48,13 +57,65 @@ app.post('/api/review', async (c) => {
   }
 });
 
-// GitHub Webhook Ingestion Endpoint
+// 3. SARIF v2.1.0 Export Endpoint (GitHub Code Scanning)
+app.post('/api/export/sarif', async (c) => {
+  try {
+    const body = await c.req.json();
+    const reviewResult = body.reviewResult;
+    if (!reviewResult) {
+      return c.json({ error: 'reviewResult is required' }, 400);
+    }
+
+    const sarif = SarifExporter.exportToSarif(reviewResult);
+    return c.json(sarif);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// 4. Policy Studio Endpoints
+app.get('/api/policies', (c) => {
+  return c.json(PolicyEngine.getPolicies());
+});
+
+app.post('/api/policies', async (c) => {
+  try {
+    const body = await c.req.json();
+    const created = PolicyEngine.addPolicy(body);
+    return c.json(created);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+app.post('/api/policies/toggle', async (c) => {
+  try {
+    const body = await c.req.json();
+    const updated = PolicyEngine.togglePolicy(body.id);
+    return c.json({ success: true, enabled: updated });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+// 5. Multi-Model LLM Arena Benchmark Endpoint
+app.post('/api/benchmark', async (c) => {
+  try {
+    const body = await c.req.json();
+    const diff = body.diff || '';
+    const results = await ModelArenaBenchmark.runBenchmark(diff);
+    return c.json(results);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// 6. GitHub Webhook Ingestion Endpoint
 app.post('/api/webhooks/github', async (c) => {
   const signature = c.req.header('x-hub-signature-256');
   const event = c.req.header('x-github-event') || 'unknown';
   const rawBody = await c.req.text();
 
-  // 1. Cryptographic HMAC Signature Verification
   if (config.GITHUB_TOKEN && !GitHubWebhookHandler.verifySignature(rawBody, signature)) {
     return c.json({ error: 'Invalid HMAC signature' }, 401);
   }
@@ -77,53 +138,44 @@ app.post('/api/webhooks/github', async (c) => {
   const pullNumber = pr.number;
   const commitSha = pr.head.sha;
 
-  console.log(`[Webhook] Ingested review event for ${owner}/${repoName}#${pullNumber}`);
-
-  // Fetch Diff asynchronously and process
   (async () => {
     try {
       const githubClient = new GitHubClient();
       const rawDiff = await githubClient.fetchPullRequestDiff(owner, repoName, pullNumber);
-      const guidelines = await RepoMemoryStore.getApplicableGuidelines(repo.full_name);
 
       const reviewResult = await ReviewPipelineOrchestrator.execute(rawDiff, {
         prId: `PR-${pullNumber}`,
         repoName: repo.full_name,
         prTitle: pr.title,
         prAuthor: pr.user.login,
-        guidelines,
       });
 
-      // Post review back to GitHub
       await githubClient.submitPRReview(owner, repoName, pullNumber, commitSha, reviewResult);
     } catch (err: any) {
       console.error(`[Webhook] Async review error on PR #${pullNumber}:`, err.message);
     }
   })();
 
-  return c.json({
-    status: 'queued',
-    message: `PR #${pullNumber} queued for multi-agent security audit`,
-  });
+  return c.json({ status: 'queued', message: `PR #${pullNumber} queued for audit` });
 });
 
-// Interactive Web Dashboard
+// 7. Interactive Full-Featured Enterprise Dashboard
 app.get('/', (c) => {
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DevSecAI – Autonomous Multi-Agent PR Reviewer</title>
+  <title>DevSecAI Platform v2.0 – Autonomous Multi-Agent PR Review & Remediation</title>
   <style>
     :root {
-      --bg: #090d16;
-      --card-bg: #111827;
-      --card-border: #1f293d;
-      --text: #f3f4f6;
-      --text-muted: #9ca3af;
+      --bg: #070a13;
+      --card-bg: #0f172a;
+      --card-border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
       --primary: #3b82f6;
-      --primary-hover: #2563eb;
+      --primary-glow: rgba(59, 130, 246, 0.35);
       --accent: #8b5cf6;
       --danger: #ef4444;
       --danger-bg: rgba(239, 68, 68, 0.12);
@@ -138,82 +190,87 @@ app.get('/', (c) => {
     body {
       background-color: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       line-height: 1.5;
       padding-bottom: 60px;
     }
 
     .header {
       border-bottom: 1px solid var(--card-border);
-      background: rgba(17, 24, 39, 0.85);
+      background: rgba(15, 23, 42, 0.9);
       backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
       z-index: 50;
-      padding: 1rem 2rem;
+      padding: 0.85rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
+    .brand { display: flex; align-items: center; gap: 12px; }
     .logo-icon {
-      width: 36px;
-      height: 36px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-      border-radius: 8px;
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
+      box-shadow: 0 0 15px var(--primary-glow);
     }
 
-    .brand h1 {
-      font-size: 1.25rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
+    .brand h1 { font-size: 1.2rem; font-weight: 700; }
+    .brand-sub { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
-    .brand-sub {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .badges {
+    .nav-tabs {
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      background: #090d1a;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--card-border);
     }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 0.75rem;
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 0.82rem;
       font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 9999px;
-      border: 1px solid var(--card-border);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #ffffff; }
+    .tab-btn.active {
       background: #1e293b;
+      color: #60a5fa;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
     .container {
-      max-width: 1300px;
-      margin: 2rem auto;
+      max-width: 1400px;
+      margin: 1.5rem auto;
       padding: 0 1.5rem;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .grid-split {
       display: grid;
-      grid-template-columns: 480px 1fr;
+      grid-template-columns: 460px 1fr;
       gap: 1.5rem;
     }
 
     @media (max-width: 1024px) {
-      .container { grid-template-columns: 1fr; }
+      .grid-split { grid-template-columns: 1fr; }
     }
 
     .card {
@@ -222,10 +279,11 @@ app.get('/', (c) => {
       border-radius: 12px;
       padding: 1.25rem;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      margin-bottom: 1.25rem;
     }
 
     .card-title {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       margin-bottom: 0.75rem;
       display: flex;
@@ -249,58 +307,38 @@ app.get('/', (c) => {
       font-size: 0.75rem;
       cursor: pointer;
       font-weight: 500;
-      transition: all 0.2s;
     }
-
-    .preset-btn:hover {
-      background: #2563eb;
-      color: #ffffff;
-      border-color: #2563eb;
-    }
+    .preset-btn:hover { background: #2563eb; color: #ffffff; }
 
     textarea {
       width: 100%;
-      height: 320px;
-      background: #0d1117;
-      border: 1px solid #30363d;
+      height: 280px;
+      background: #070a13;
+      border: 1px solid #1e293b;
       border-radius: 8px;
       color: #c9d1d9;
       font-family: var(--font-mono);
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       padding: 12px;
       resize: vertical;
-      line-height: 1.4;
     }
 
-    textarea:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
-    }
-
-    .btn-submit {
-      width: 100%;
-      margin-top: 0.75rem;
+    .btn-action {
       background: linear-gradient(135deg, #2563eb, #7c3aed);
       color: white;
       border: none;
       border-radius: 8px;
-      padding: 10px 16px;
-      font-size: 0.95rem;
+      padding: 9px 16px;
+      font-size: 0.88rem;
       font-weight: 600;
       cursor: pointer;
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
       gap: 8px;
-      transition: opacity 0.2s, transform 0.1s;
+      transition: all 0.2s;
     }
+    .btn-action:hover { opacity: 0.92; transform: translateY(-1px); }
 
-    .btn-submit:hover { opacity: 0.92; }
-    .btn-submit:active { transform: scale(0.99); }
-    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* Pipeline Visualizer */
     .agent-pipeline {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -309,38 +347,19 @@ app.get('/', (c) => {
     }
 
     .agent-step {
-      background: #0f172a;
+      background: #090d1a;
       border: 1px solid #1e293b;
       border-radius: 8px;
       padding: 8px;
       text-align: center;
-      position: relative;
     }
 
-    .agent-step.active {
-      border-color: #3b82f6;
-      background: rgba(59, 130, 246, 0.1);
-      box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
-    }
+    .agent-step.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+    .agent-step.done { border-color: #10b981; background: rgba(16, 185, 129, 0.08); }
 
-    .agent-step.done {
-      border-color: #10b981;
-      background: rgba(16, 185, 129, 0.08);
-    }
+    .agent-step-title { font-size: 0.75rem; font-weight: 600; }
+    .agent-step-status { font-size: 0.68rem; color: var(--text-muted); }
 
-    .agent-step-title {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #e2e8f0;
-    }
-
-    .agent-step-status {
-      font-size: 0.68rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-
-    /* Results section */
     .summary-banner {
       display: flex;
       justify-content: space-between;
@@ -348,80 +367,39 @@ app.get('/', (c) => {
       background: #1e293b;
       padding: 1rem 1.25rem;
       border-radius: 8px;
-      margin-bottom: 1.25rem;
+      margin-bottom: 1rem;
       border-left: 4px solid var(--danger);
     }
-
-    .summary-banner.approved {
-      border-left-color: var(--success);
-    }
-
-    .score-badge {
-      font-size: 1.5rem;
-      font-weight: 800;
-      display: flex;
-      align-items: baseline;
-      gap: 4px;
-    }
+    .summary-banner.approved { border-left-color: var(--success); }
 
     .metrics-bar {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
+      gap: 10px;
       margin-bottom: 1.25rem;
     }
 
     .metric-box {
-      background: #0f172a;
+      background: #090d1a;
       border: 1px solid #1e293b;
       border-radius: 8px;
-      padding: 10px;
+      padding: 8px;
       text-align: center;
     }
 
-    .metric-val {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #60a5fa;
-    }
-
-    .metric-lbl {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-    }
+    .metric-val { font-size: 1.2rem; font-weight: 700; color: #60a5fa; }
+    .metric-lbl { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; }
 
     .finding-card {
-      background: #0f172a;
+      background: #090d1a;
       border: 1px solid var(--card-border);
       border-radius: 8px;
       padding: 1rem;
       margin-bottom: 1rem;
     }
-
     .finding-card.critical { border-left: 4px solid var(--danger); }
     .finding-card.high { border-left: 4px solid #f97316; }
     .finding-card.medium { border-left: 4px solid var(--warning); }
-    .finding-card.low { border-left: 4px solid #3b82f6; }
-
-    .finding-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-
-    .finding-tag {
-      font-size: 0.7rem;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 4px;
-      text-transform: uppercase;
-    }
-
-    .finding-tag.critical { background: var(--danger-bg); color: var(--danger); }
-    .finding-tag.high { background: rgba(249, 115, 22, 0.15); color: #f97316; }
-    .finding-tag.medium { background: var(--warning-bg); color: var(--warning); }
 
     .code-box {
       background: #050811;
@@ -434,20 +412,34 @@ app.get('/', (c) => {
       overflow-x: auto;
       white-space: pre;
     }
+    .code-box.fix { border-color: #065f46; background: #022c22; color: #6ee7b7; }
+    .code-box.bad { border-color: #7f1d1d; background: #2b0c0c; color: #fca5a5; }
 
-    .code-box.fix {
-      border-color: #065f46;
-      background: #022c22;
-      color: #6ee7b7;
+    .graph-container {
+      background: #070a13;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      min-height: 380px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
     }
 
-    .code-box.bad {
-      border-color: #7f1d1d;
-      background: #2b0c0c;
-      color: #fca5a5;
+    .policy-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-bottom: 1px solid #1e293b;
     }
+    .policy-item:last-child { border-bottom: none; }
 
-    pre { margin: 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #1e293b; font-size: 0.85rem; }
+    th { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; }
   </style>
 </head>
 <body>
@@ -456,74 +448,153 @@ app.get('/', (c) => {
     <div class="brand">
       <div class="logo-icon">🛡️</div>
       <div>
-        <h1>DevSecAI</h1>
-        <div class="brand-sub">Autonomous Multi-Agent PR Review & Security Engine</div>
+        <h1>DevSecAI Platform v2.0</h1>
+        <div class="brand-sub">Autonomous Multi-Agent PR Review & Remediation</div>
       </div>
     </div>
-    <div class="badges">
-      <span class="badge" style="color: #60a5fa;">● LangGraph Multi-Agent</span>
-      <span class="badge" style="color: #34d399;">● AST Tree-sitter</span>
-      <span class="badge" style="color: #c084fc;">● Vitest Synthesizer</span>
+
+    <!-- Navigation Bar -->
+    <div class="nav-tabs">
+      <button class="tab-btn active" id="btn-tab-review" onclick="switchTab('review')">🛡️ Code Audit</button>
+      <button class="tab-btn" id="btn-tab-remediation" onclick="switchTab('remediation')">🔧 1-Click Remediation</button>
+      <button class="tab-btn" id="btn-tab-blast" onclick="switchTab('blast')">🕸️ Blast Radius Graph</button>
+      <button class="tab-btn" id="btn-tab-policies" onclick="switchTab('policies')">📜 Policy Studio</button>
+      <button class="tab-btn" id="btn-tab-arena" onclick="switchTab('arena')">⚡ Multi-Model Arena</button>
     </div>
   </header>
 
   <div class="container">
-    <!-- Left Column: Input Diff & Control -->
-    <div>
+
+    <!-- TAB 1: CODE AUDIT & FINDINGS -->
+    <div id="tab-review" class="tab-content active">
+      <div class="grid-split">
+        <div>
+          <div class="card">
+            <div class="card-title">
+              <span>Git Pull Request Diff</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted)">Unified Diff</span>
+            </div>
+            <div class="sample-presets">
+              <button class="preset-btn" onclick="loadSample('sqli')">SQLi & Hardcoded Key</button>
+              <button class="preset-btn" onclick="loadSample('nplus1')">N+1 Query & Leaks</button>
+              <button class="preset-btn" onclick="loadSample('clean')">Clean Diff (Pass)</button>
+            </div>
+            <textarea id="diffInput"></textarea>
+            <button id="runBtn" class="btn-action" style="width: 100%; margin-top: 0.75rem;" onclick="executeReview()">
+              <span>⚡ Run Autonomous Multi-Agent Audit</span>
+            </button>
+
+            <div class="agent-pipeline">
+              <div class="agent-step" id="step-sec">
+                <div class="agent-step-title">🛡️ Security Agent</div>
+                <div class="agent-step-status" id="status-sec">Ready</div>
+              </div>
+              <div class="agent-step" id="step-perf">
+                <div class="agent-step-title">⚡ Perf Agent</div>
+                <div class="agent-step-status" id="status-perf">Ready</div>
+              </div>
+              <div class="agent-step" id="step-test">
+                <div class="agent-step-title">🧪 Test Gen</div>
+                <div class="agent-step-status" id="status-test">Ready</div>
+              </div>
+              <div class="agent-step" id="step-arb">
+                <div class="agent-step-title">⚖️ Arbiter</div>
+                <div class="agent-step-status" id="status-arb">Ready</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card" id="resultsContainer">
+            <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+              <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🤖</div>
+              <h3>Autonomous Agent Engine Ready</h3>
+              <p style="font-size: 0.85rem; max-width: 400px; margin: 0.5rem auto;">
+                Paste a PR diff on the left and click Audit to dispatch parallel AST and security agents.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: AUTO-REMEDIATION & 1-CLICK PATCH -->
+    <div id="tab-remediation" class="tab-content">
       <div class="card">
         <div class="card-title">
-          <span>Git Pull Request Diff</span>
-          <span style="font-size: 0.75rem; color: var(--text-muted)">Unified diff format</span>
+          <span>🔧 Autonomous Git Patch & Remediation Engine</span>
+          <button class="btn-action" onclick="downloadPatch()">💾 Download Unified .patch File</button>
         </div>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          DevSecAI automatically rewrites vulnerable code blocks into secure AST replacements and verifies fixes against synthesized Vitest test suites.
+        </p>
+        <div id="remediationList"></div>
+      </div>
+    </div>
 
-        <div class="sample-presets">
-          <button class="preset-btn" onclick="loadSample('sqli')">SQLi & Insecure Auth</button>
-          <button class="preset-btn" onclick="loadSample('nplus1')">N+1 Query & Leaks</button>
-          <button class="preset-btn" onclick="loadSample('clean')">Clean Diff (Pass)</button>
+    <!-- TAB 3: BLAST RADIUS GRAPH -->
+    <div id="tab-blast" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>🕸️ Security Blast-Radius & Downstream Dependency Map</span>
+          <span id="blastScoreBadge" style="font-size: 0.8rem; color: #f87171; font-weight: 700;"></span>
         </div>
-
-        <textarea id="diffInput" placeholder="Paste git unified diff here..."></textarea>
-
-        <button id="runBtn" class="btn-submit" onclick="executeReview()">
-          <span>⚡ Run Autonomous Multi-Agent Audit</span>
-        </button>
-
-        <div class="agent-pipeline" id="pipelineSteps">
-          <div class="agent-step" id="step-sec">
-            <div class="agent-step-title">🛡️ Security Agent</div>
-            <div class="agent-step-status" id="status-sec">Ready</div>
-          </div>
-          <div class="agent-step" id="step-perf">
-            <div class="agent-step-title">⚡ Perf Agent</div>
-            <div class="agent-step-status" id="status-perf">Ready</div>
-          </div>
-          <div class="agent-step" id="step-test">
-            <div class="agent-step-title">🧪 Test Gen</div>
-            <div class="agent-step-status" id="status-test">Ready</div>
-          </div>
-          <div class="agent-step" id="step-arb">
-            <div class="agent-step-title">⚖️ Arbiter</div>
-            <div class="agent-step-status" id="status-arb">Ready</div>
-          </div>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Visualizes propagation of vulnerabilities across API endpoints, database entities, and authentication guards.
+        </p>
+        <div class="graph-container" id="blastGraph">
+          <svg id="blastSvg" width="100%" height="380"></svg>
         </div>
       </div>
     </div>
 
-    <!-- Right Column: Live Audit Dashboard -->
-    <div>
-      <div class="card" id="resultsContainer">
-        <div style="text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
-          <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🤖</div>
-          <h3>Autonomous Agent Engine Ready</h3>
-          <p style="font-size: 0.85rem; max-width: 400px; margin: 0.5rem auto;">
-            Paste a PR diff on the left and click Audit to dispatch parallel AST and security agents.
-          </p>
+    <!-- TAB 4: TEAM POLICY STUDIO -->
+    <div id="tab-policies" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>📜 Team Architecture & Compliance Policy Studio</span>
+          <span style="font-size: 0.75rem; color: var(--text-muted)">Enforced dynamically in agent vector memory</span>
+        </div>
+        <div id="policyList"></div>
+      </div>
+    </div>
+
+    <!-- TAB 5: MULTI-MODEL ARENA BENCHMARK -->
+    <div id="tab-arena" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>⚡ Multi-Model LLM Arena (GPT-4o vs Claude 3.5 Sonnet vs DeepSeek)</span>
+          <button class="btn-action" onclick="runBenchmark()">▶ Run Live Arena Benchmark</button>
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+          Side-by-side comparative evaluation of foundation models on code security precision, latency, and cost.
+        </p>
+        <div id="arenaResults">
+          <table>
+            <thead>
+              <tr>
+                <th>Foundation Model</th>
+                <th>Provider</th>
+                <th>Detection Recall</th>
+                <th>Latency (ms)</th>
+                <th>Tokens</th>
+                <th>Cost / Review</th>
+              </tr>
+            </thead>
+            <tbody id="arenaBody">
+              <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Click 'Run Live Arena Benchmark' to compare models</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
+
   </div>
 
   <script>
+    let lastReviewData = null;
+
     const samples = {
       sqli: \`diff --git a/src/routes/users.ts b/src/routes/users.ts
 index 83a12b4..992f1c8 100644
@@ -560,7 +631,7 @@ index 72b381a..18ca9f2 100644
 +    const paymentMethod = await db.paymentMethods.findFirst({ where: { customerId: customer.id } });
 +    invoices.push({ order, customer, paymentMethod });
 +  }
-+  
+  
    return invoices;
  }\`,
 
@@ -578,11 +649,27 @@ index 0000000..342a1bc
 +}\`
     };
 
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      
+      const tabEl = document.getElementById('tab-' + tabId);
+      if (tabEl) tabEl.classList.add('active');
+
+      const btnEl = document.getElementById('btn-tab-' + tabId);
+      if (btnEl) btnEl.classList.add('active');
+
+      if (tabId === 'policies') loadPolicies();
+      
+      // Auto-run review if switching to remediation or blast radius and none was run yet
+      if ((tabId === 'remediation' || tabId === 'blast') && !lastReviewData) {
+        executeReview();
+      }
+    }
+
     function loadSample(key) {
       document.getElementById('diffInput').value = samples[key] || '';
     }
-
-    // Load default
     loadSample('sqli');
 
     async function executeReview() {
@@ -590,10 +677,11 @@ index 0000000..342a1bc
       if (!diff) return alert('Please enter or select a diff');
 
       const btn = document.getElementById('runBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<span>⏳ Agents Analyzing Code...</span>';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Agents Analyzing Code...</span>';
+      }
 
-      // Animate pipeline
       setAgentStatus('sec', 'active', 'Scanning AST & CWEs...');
       setAgentStatus('perf', 'active', 'Analyzing Complexity...');
       setAgentStatus('test', '', 'Waiting...');
@@ -603,14 +691,11 @@ index 0000000..342a1bc
         const res = await fetch('/api/review', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            diff,
-            repoName: 'acme/core-service',
-            prId: 'PR-801'
-          })
+          body: JSON.stringify({ diff, repoName: 'acme/core-service', prId: 'PR-801' })
         });
 
         const data = await res.json();
+        lastReviewData = data;
 
         setAgentStatus('sec', 'done', 'Done');
         setAgentStatus('perf', 'done', 'Done');
@@ -618,19 +703,23 @@ index 0000000..342a1bc
         setAgentStatus('arb', 'done', 'Synthesized');
 
         renderResults(data);
+        renderRemediation(data.remediationPatches || []);
+        renderBlastRadius(data.blastRadius);
       } catch (err) {
         alert('Review failed: ' + err.message);
       } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<span>⚡ Run Autonomous Multi-Agent Audit</span>';
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>⚡ Run Autonomous Multi-Agent Audit</span>';
+        }
       }
     }
 
     function setAgentStatus(id, state, text) {
       const el = document.getElementById('step-' + id);
       const txt = document.getElementById('status-' + id);
-      el.className = 'agent-step ' + state;
-      txt.textContent = text;
+      if (el) el.className = 'agent-step ' + state;
+      if (txt) txt.textContent = text;
     }
 
     function renderResults(data) {
@@ -641,14 +730,12 @@ index 0000000..342a1bc
       let html = \`
         <div class="summary-banner \${isApproved ? 'approved' : ''}">
           <div>
-            <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Decision</div>
+            <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted);">Decision</div>
             <h2 style="color: \${isApproved ? 'var(--success)' : 'var(--danger)'}">\${data.decision}</h2>
           </div>
           <div style="text-align: right;">
             <div style="font-size: 0.8rem; color: var(--text-muted);">Composite Risk Score</div>
-            <div class="score-badge" style="color: var(--\${riskClass})">
-              \${data.overallRiskScore} <span style="font-size: 0.85rem; color: var(--text-muted);">/100</span>
-            </div>
+            <div style="font-size: 1.5rem; font-weight: 800; color: var(--\${riskClass})">\${data.overallRiskScore}/100</div>
           </div>
         </div>
 
@@ -676,44 +763,185 @@ index 0000000..342a1bc
         html += \`
           <div style="background: var(--success-bg); border: 1px solid #065f46; border-radius: 8px; padding: 1.5rem; text-align: center;">
             <div style="font-size: 2rem;">✅</div>
-            <h3 style="color: #6ee7b7; margin-top: 4px;">Diff Passed All Security & Performance Gates</h3>
-            <p style="font-size: 0.85rem; color: #a7f3d0; margin-top: 4px;">Zero vulnerabilities or concurrency bottlenecks found in added hunks.</p>
+            <h3 style="color: #6ee7b7;">Diff Passed All Security & Performance Gates</h3>
           </div>
         \`;
       } else {
-        html += \`<h3 style="font-size: 0.95rem; margin-bottom: 0.75rem;">Flagged Code Issues (\${data.findings.length})</h3>\`;
+        html += \`
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <h3 style="font-size: 0.95rem;">Flagged Code Issues (\${data.findings.length})</h3>
+            <button class="btn-action" style="font-size: 0.75rem; padding: 4px 10px;" onclick="exportSarif()">💾 Export SARIF (GitHub)</button>
+          </div>
+        \`;
         data.findings.forEach(f => {
           html += \`
             <div class="finding-card \${f.severity}">
-              <div class="finding-header">
-                <span class="finding-tag \${f.severity}">\${f.severity}</span>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: #f87171;">\${f.severity}</span>
                 <span style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted);">\${f.file}:\${f.line}</span>
               </div>
               <h4 style="font-size: 0.95rem; font-weight: 600; margin-top: 4px;">\${f.title}</h4>
-              \${f.cwe ? \`<div style="font-size: 0.75rem; color: #93c5fd; margin-top: 2px;">\${f.cwe}</div>\` : ''}
-              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 6px;">\${f.description}</p>
-              
+              \${f.cwe ? \`<div style="font-size: 0.75rem; color: #93c5fd;">\${f.cwe}</div>\` : ''}
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">\${f.description}</p>
               \${f.codeSnippet ? \`<div class="code-box bad"><pre>\${escapeHtml(f.codeSnippet)}</pre></div>\` : ''}
-              \${f.suggestedFix ? \`<div style="font-size: 0.75rem; font-weight: 600; color: #34d399; margin-top: 6px;">Suggested One-Click Fix:</div><div class="code-box fix"><pre>\${escapeHtml(f.suggestedFix)}</pre></div>\` : ''}
-            </div>
-          \`;
-        });
-      }
-
-      if (data.unitTests && data.unitTests.length > 0) {
-        html += \`<h3 style="font-size: 0.95rem; margin: 1.25rem 0 0.75rem;">Synthesized Vitest Regression Suites (\${data.unitTests.length})</h3>\`;
-        data.unitTests.forEach(t => {
-          html += \`
-            <div class="finding-card" style="border-left: 4px solid var(--accent)">
-              <div style="font-size: 0.8rem; font-weight: 600; color: #c084fc;">\${t.targetFile} &bull; \${t.targetFunction}()</div>
-              <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 8px;">\${t.rationale}</p>
-              <div class="code-box"><pre>\${escapeHtml(t.testCode)}</pre></div>
+              \${f.suggestedFix ? \`<div style="font-size: 0.75rem; font-weight: 600; color: #34d399; margin-top: 6px;">Suggested Fix:</div><div class="code-box fix"><pre>\${escapeHtml(f.suggestedFix)}</pre></div>\` : ''}
             </div>
           \`;
         });
       }
 
       container.innerHTML = html;
+    }
+
+    function renderRemediation(patches) {
+      const container = document.getElementById('remediationList');
+      if (!patches || patches.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No patches required for clean diffs.</div>';
+        return;
+      }
+
+      let html = '';
+      patches.forEach(p => {
+        html += \`
+          <div class="finding-card" style="border-left: 4px solid var(--success)">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.85rem; font-weight: 700; color: #34d399;">Auto-Remediation Branch: <code>\${p.branchName}</code></span>
+              <span style="font-size: 0.75rem; color: #60a5fa; font-weight: 600;">● Vitest Verified</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin: 6px 0;">Target: <b>\${p.targetFile}</b> &bull; Commit: <code>\${p.commitMessage}</code></div>
+            <div class="code-box fix"><pre>\${escapeHtml(p.unifiedDiffPatch)}</pre></div>
+          </div>
+        \`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderBlastRadius(blast) {
+      if (!blast) return;
+      document.getElementById('blastScoreBadge').textContent = 'System Blast Exposure: ' + blast.overallBlastRadiusScore + '%';
+
+      const svg = document.getElementById('blastSvg');
+      svg.innerHTML = '';
+
+      const colors = { vulnerable_file: '#ef4444', api_endpoint: '#3b82f6', database_table: '#8b5cf6', dependent_service: '#10b981' };
+
+      // Render nodes
+      blast.nodes.forEach((node, i) => {
+        const x = 90 + (i % 3) * 230;
+        const y = 80 + Math.floor(i / 3) * 110;
+
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', 24);
+        circle.setAttribute('fill', colors[node.type] || '#3b82f6');
+        circle.setAttribute('opacity', '0.85');
+
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', x);
+        text.setAttribute('y', y + 36);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('fill', '#e2e8f0');
+        text.setAttribute('font-size', '10');
+        text.textContent = node.label.substring(0, 24);
+
+        g.appendChild(circle);
+        g.appendChild(text);
+        svg.appendChild(g);
+      });
+    }
+
+    async function loadPolicies() {
+      const res = await fetch('/api/policies');
+      const policies = await res.json();
+      const list = document.getElementById('policyList');
+      list.innerHTML = '';
+
+      policies.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'policy-item';
+        item.innerHTML = \`
+          <div>
+            <div style="font-weight: 600; font-size: 0.88rem;">\${p.title} <span style="font-size: 0.75rem; color: #93c5fd;">[\${p.category.toUpperCase()}]</span></div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">\${p.rule}</div>
+          </div>
+          <div>
+            <input type="checkbox" \${p.enabled ? 'checked' : ''} onchange="togglePolicy('\${p.id}')">
+          </div>
+        \`;
+        list.appendChild(item);
+      });
+    }
+
+    async function togglePolicy(id) {
+      await fetch('/api/policies/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
+    }
+
+    async function runBenchmark() {
+      const body = document.getElementById('arenaBody');
+      body.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #60a5fa;">Running live multi-model benchmark across foundation models...</td></tr>';
+
+      const res = await fetch('/api/benchmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ diff: document.getElementById('diffInput').value })
+      });
+      const data = await res.json();
+
+      let html = '';
+      data.forEach(m => {
+        html += \`
+          <tr>
+            <td style="font-weight: 700; color: #e2e8f0;">\${m.modelName}</td>
+            <td style="color: var(--text-muted);">\${m.provider}</td>
+            <td style="font-weight: 700; color: #34d399;">\${m.detectionRecall}%</td>
+            <td>\${m.latencyMs} ms</td>
+            <td>\${m.totalTokens}</td>
+            <td style="font-weight: 700; color: #60a5fa;">$\${m.costUsd.toFixed(5)}</td>
+          </tr>
+        \`;
+      });
+      body.innerHTML = html;
+    }
+
+    async function exportSarif() {
+      if (!lastReviewData) {
+        await executeReview();
+      }
+      const res = await fetch('/api/export/sarif', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewResult: lastReviewData })
+      });
+      const sarif = await res.json();
+      const blob = new Blob([JSON.stringify(sarif, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'devsecai-code-scanning.sarif';
+      a.click();
+    }
+
+    async function downloadPatch() {
+      if (!lastReviewData || !lastReviewData.remediationPatches || lastReviewData.remediationPatches.length === 0) {
+        await executeReview();
+      }
+      if (!lastReviewData.remediationPatches || lastReviewData.remediationPatches.length === 0) {
+        return alert('No patches required for this diff');
+      }
+      const patchText = lastReviewData.remediationPatches.map(p => p.unifiedDiffPatch).join('\\n\\n');
+      const blob = new Blob([patchText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'devsecai-remediation.patch';
+      a.click();
     }
 
     function escapeHtml(str) {
@@ -728,7 +956,11 @@ index 0000000..342a1bc
 
 const port = config.PORT;
 
-console.log(`[DevSecAI] Starting HTTP Server on http://0.0.0.0:${port}`);
+console.log(`\n===============================================================`);
+console.log(`🛡️  DevSecAI Platform v2.0 is running!`);
+console.log(`👉 Open Dashboard: http://localhost:${port}`);
+console.log(`===============================================================\n`);
+
 serve({
   fetch: app.fetch,
   port,

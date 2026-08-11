@@ -3,6 +3,9 @@ import { SecurityAgent } from '../agents/security-agent.js';
 import { PerformanceAgent } from '../agents/performance-agent.js';
 import { TestGeneratorAgent } from '../agents/test-generator-agent.js';
 import { ArbiterAgent } from '../agents/arbiter-agent.js';
+import { RemediationPatchEngine } from '../remediation/patch-engine.js';
+import { BlastRadiusAnalyzer } from '../graph/blast-radius.js';
+import { PolicyEngine } from '../policy/policy-engine.js';
 import { 
   PRReviewResult, 
   RepositoryGuideline, 
@@ -27,9 +30,14 @@ export class ReviewPipelineOrchestrator {
   ): Promise<PRReviewResult> {
     const prId = options.prId || `PR-${Math.floor(1000 + Math.random() * 9000)}`;
     const repoName = options.repoName || 'organization/repo';
-    const guidelines = options.guidelines || [];
+    
+    // Ingest custom policies dynamically
+    const activePolicies = PolicyEngine.getActivePolicies();
+    const guidelines = options.guidelines && options.guidelines.length > 0 
+      ? options.guidelines 
+      : activePolicies;
 
-    console.log(`[DevSecAI] 🚀 Initializing multi-agent review for ${repoName} (#${prId})...`);
+    console.log(`[DevSecAI] 🚀 Initializing multi-agent review for ${repoName} (#${prId}) with ${guidelines.length} active policies...`);
     
     // Step 1: Parse Diff into Structured AST-friendly Hunks
     const parsedDiff = parseGitDiff(rawDiff);
@@ -56,7 +64,7 @@ export class ReviewPipelineOrchestrator {
 
     const preliminaryFindings = [...securityRes.findings, ...performanceRes.findings];
 
-    // Step 3: Test Generation Agent (Synthesizes regression suites for flagged issues)
+    // Step 3: Test Generation Agent
     let unitTests: any[] = [];
     if (preliminaryFindings.length > 0) {
       console.log('[DevSecAI] 🧪 Dispatching Autonomous Test Generator Agent...');
@@ -68,7 +76,7 @@ export class ReviewPipelineOrchestrator {
 
     // Step 4: Arbiter Agent Consensus & Risk Scoring
     console.log('[DevSecAI] ⚖️ Arbiter Agent synthesizing consensus and calculating risk score...');
-    const { result, metrics: arbiterMetrics } = ArbiterAgent.synthesize(
+    const { result } = ArbiterAgent.synthesize(
       prId,
       repoName,
       securityRes.findings,
@@ -77,7 +85,19 @@ export class ReviewPipelineOrchestrator {
       accumulatedMetrics
     );
 
-    console.log(`[DevSecAI] 🏁 Review complete. Decision: ${result.decision}, Risk Score: ${result.overallRiskScore}/100.`);
+    // Step 5: Auto-Remediation & Patch Generation
+    const remediationPatches = RemediationPatchEngine.generatePatches(
+      result.findings,
+      prId,
+      unitTests
+    );
+    result.remediationPatches = remediationPatches;
+
+    // Step 6: Security Blast-Radius Dependency Graph
+    const blastRadius = BlastRadiusAnalyzer.analyze(result.findings);
+    result.blastRadius = blastRadius;
+
+    console.log(`[DevSecAI] 🏁 Review complete. Decision: ${result.decision}, Risk Score: ${result.overallRiskScore}/100, Patches: ${remediationPatches.length}.`);
     return result;
   }
 }

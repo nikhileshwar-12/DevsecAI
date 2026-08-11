@@ -1,4 +1,4 @@
-# ??? DevSecAI v2.0 � Autonomous Multi-Agent GitHub PR Reviewer & Security Auditing Platform
+﻿# 🛡️ DevSecAI v2.0 – Autonomous Multi-Agent GitHub PR Reviewer & Security Auditing Platform
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg?logo=node.js)](https://nodejs.org/)
@@ -11,62 +11,62 @@
 
 ---
 
-## ??? System Architecture
+## 🏗️ System Architecture
 
 \\\	ext
-                           +-----------------------------------------+
-                           �      GitHub Webhook / Pull Request      �
-                           +-----------------------------------------+
-                                                � (HMAC SHA-256 Validated)
-                                                ?
-                           +-----------------------------------------+
-                           �      Fastify / Hono API Gateway         �
-                           +-----------------------------------------+
-                                                �
-                                                ?
-                           +-----------------------------------------+
-                           �    AST Diff & Scope Boundary Chunker   �
-                           �       (Tree-sitter / Hunk Parser)       �
-                           +-----------------------------------------+
-                                                �
-                 +-------------------------------------------------------------+
-                 ?                                                             ?
-+---------------------------------+                           +---------------------------------+
-�        ??? Security Agent        �                           �       ? Performance Agent       �
-�  - OWASP Top 10 & CWE Detection �                           �  - N+1 Query Loop Detection     �
-�  - SQLi / XSS / RCE Auditing    �                           �  - Unhandled Async Promises     �
-�  - Hardcoded Secrets Scanning   �                           �  - Memory Leak Prevention       �
-+---------------------------------+                           +---------------------------------+
-                 �                                                             �
-                 +-------------------------------------------------------------+
-                                                �
-                                                ?
-                           +-----------------------------------------+
-                           �    ?? Autonomous Test Generator Agent   �
-                           �   (Synthesizes Vitest/Jest Test Suites) �
-                           +-----------------------------------------+
-                                                �
-                                                ?
-                           +-----------------------------------------+
-                           �       ?? Consensus Arbiter Agent         �
-                           �  - Multi-agent Deduplication            �
-                           �  - Composite Risk Scoring (0 - 100)     �
-                           �  - Confidence Threshold Filtering       �
-                           +-----------------------------------------+
-                                                �
-        +-------------------------------------------------------------------------------+
-        ?                        ?                             ?                        ?
-+-----------------+    +-----------------+           +-----------------+      +-----------------+
-� ?? 1-Click Auto-�    � ?? SARIF v2.1.0 �           � ??? Blast-Radius �      � ? Multi-Model  �
-�  Remediation &  �    �  Code Scanning  �           �   Dependency    �      �   LLM Arena     �
-�  Git Patch Gen  �    � (GitHub Security�           � Graph Visualizer�      � Benchmark (4o/  �
-� (devsecai/fix-*)�    �  Tab Export)    �           � (APIs & DBs)    �      �  Claude/DeepSeek�
-+-----------------+    +-----------------+           +-----------------+      +-----------------+
+                           ┌─────────────────────────────────────────┐
+                           │      GitHub Webhook / Pull Request      │
+                           └────────────────────┬────────────────────┘
+                                                │ (HMAC SHA-256 Validated)
+                                                ▼
+                           ┌─────────────────────────────────────────┐
+                           │      Fastify / Hono API Gateway         │
+                           └────────────────────┬────────────────────┘
+                                                │
+                                                ▼
+                           ┌─────────────────────────────────────────┐
+                           │    AST Diff & Scope Boundary Chunker   │
+                           │       (Tree-sitter / Hunk Parser)       │
+                           └────────────────────┬────────────────────┘
+                                                │
+                 ┌──────────────────────────────┴──────────────────────────────┐
+                 ▼                                                             ▼
+┌─────────────────────────────────┐                           ┌─────────────────────────────────┐
+│        🛡️ Security Agent        │                           │       ⚡ Performance Agent       │
+│  - OWASP Top 10 & CWE Detection │                           │  - N+1 Query Loop Detection     │
+│  - SQLi / XSS / RCE Auditing    │                           │  - Unhandled Async Promises     │
+│  - Hardcoded Secrets Scanning   │                           │  - Memory Leak Prevention       │
+└────────────────┬────────────────┘                           └────────────────┬────────────────┘
+                 │                                                             │
+                 └──────────────────────────────┬──────────────────────────────┘
+                                                │
+                                                ▼
+                           ┌─────────────────────────────────────────┐
+                           │    🧪 Autonomous Test Generator Agent   │
+                           │   (Synthesizes Vitest/Jest Test Suites) │
+                           └────────────────────┬────────────────────┘
+                                                │
+                                                ▼
+                           ┌─────────────────────────────────────────┐
+                           │       ⚖️ Consensus Arbiter Agent         │
+                           │  - Multi-agent Deduplication            │
+                           │  - Composite Risk Scoring (0 - 100)     │
+                           │  - Confidence Threshold Filtering       │
+                           └────────────────────┬────────────────────┘
+                                                │
+        ┌────────────────────────┬──────────────┴──────────────┬────────────────────────┐
+        ▼                        ▼                             ▼                        ▼
+┌─────────────────┐    ┌─────────────────┐           ┌─────────────────┐      ┌─────────────────┐
+│ 🔧 1-Click Auto-│    │ 💾 SARIF v2.1.0 │           │ 🕸️ Blast-Radius │      │ ⚡ Multi-Model  │
+│  Remediation &  │    │  Code Scanning  │           │   Dependency    │      │   LLM Arena     │
+│  Git Patch Gen  │    │ (GitHub Security│           │ Graph Visualizer│      │ Benchmark (4o/  │
+│ (devsecai/fix-*)│    │  Tab Export)    │           │ (APIs & DBs)    │      │  Claude/DeepSeek│
+└─────────────────┘    └─────────────────┘           └─────────────────┘      └─────────────────┘
 \\\
 
 ---
 
-## ?? 5 Enterprise Upgrades (v2.0)
+## 🌟 5 Enterprise Upgrades (v2.0)
 
 1. **Autonomous Auto-Remediation & 1-Click Patch Engine:**
    - Automatically rewrites vulnerable code blocks into secure AST replacements.
@@ -86,7 +86,7 @@
 
 ---
 
-## ?? Quick Start
+## 🚀 Quick Start
 
 ### 1. Install & Test
 \\\ash
@@ -107,5 +107,5 @@ Open **\http://localhost:3000\** in your browser to access all 5 interactive tab
 
 ---
 
-## ?? License
+## 📄 License
 MIT License. Free for open-source and commercial use.
