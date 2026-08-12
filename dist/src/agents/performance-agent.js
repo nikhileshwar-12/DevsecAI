@@ -32,64 +32,17 @@ export class PerformanceAgent {
             contextualBlocks,
             guidelines: guidelines.filter(g => g.category === 'performance'),
         };
-        const systemPrompt = , You, are, the, DevSecAI, Performance;
-         & Concurrency;
-        Engineering;
-        Specialist.
-        ;
-        Your;
-        objective: Audit;
-        code;
-        diffs;
-        for (N + 1; database; queries, unhandled)
-            async;
-        promises, memory;
-        leaks, unindexed;
-        query;
-        filters, race;
-        conditions, and;
-        blocking;
-        operations.
-        ;
-        CRITICAL;
-        INSTRUCTIONS: 1.;
-        Detect;
-        real;
-        performance;
-        and;
-        concurrency;
-        anti - patterns in newly;
-        added;
-        code(+lines).
-        ;
-        2.;
-        Report;
-        with (file, line)
-            number, severity('high' | 'medium' | 'low'), exact;
-        code;
-        snippet, and;
-        optimized;
-        replacement;
-        fix.
-        ;
-        3.;
-        Return;
-        strict;
-        JSON;
-        matching: {
-            "findings";
-            [...];
-        }
-        ;
-        const userPrompt = , Audit;
-        this;
-        Pull;
-        Request;
-        diff;
-        for (performance, scaling, and; concurrency; flaws)
-            : ;
-        json;
-        ;
+        const systemPrompt = `You are the DevSecAI Performance & Concurrency Engineering Specialist.
+Your objective: Audit code diffs for N+1 database queries, unhandled async promises, memory leaks, unindexed query filters, race conditions, and blocking operations.
+
+CRITICAL INSTRUCTIONS:
+1. Detect real performance and concurrency anti-patterns in newly added code (+ lines).
+2. Report with file, line number, severity ('high' | 'medium' | 'low'), exact code snippet, and optimized replacement fix.
+3. Return strict JSON matching: { "findings": [...] }`;
+        const userPrompt = `Audit this Pull Request diff for performance, scaling, and concurrency flaws:
+\`\`\`json
+${JSON.stringify(promptPayload, null, 2)}
+\`\`\``;
         const response = await LLMProvider.generateCompletion({
             systemPrompt,
             userPrompt,
@@ -110,28 +63,35 @@ export class PerformanceAgent {
                 const rawObj = JSON.parse(response.content);
                 if (Array.isArray(rawObj.findings)) {
                     findings = rawObj.findings.map((f) => ({
-                        id: f.id || , perf
-                    } - ), file, f.file || 'unknown', line, Number(f.line) || 1, severity, f.severity || 'medium', category, (f.category === 'concurrency' ? 'concurrency' : 'performance'), title, f.title || 'Performance Warning', description, f.description || '', cwe, f.cwe, codeSnippet, f.codeSnippet || '', suggestedFix, f.suggestedFix || '', confidence, Number(f.confidence) || 0.85, agentSource, 'performance_agent');
+                        id: f.id || `perf-${Math.random().toString(36).substring(2, 8)}`,
+                        file: f.file || 'unknown',
+                        line: Number(f.line) || 1,
+                        severity: f.severity || 'medium',
+                        category: (f.category === 'concurrency' ? 'concurrency' : 'performance'),
+                        title: f.title || 'Performance Warning',
+                        description: f.description || '',
+                        cwe: f.cwe,
+                        codeSnippet: f.codeSnippet || '',
+                        suggestedFix: f.suggestedFix || '',
+                        confidence: Number(f.confidence) || 0.85,
+                        agentSource: 'performance_agent',
+                    }));
                 }
-                ;
             }
-            finally {
+            catch {
+                findings = [];
             }
         }
-        try { }
-        catch {
-            findings = [];
-        }
+        const durationMs = Date.now() - startTime;
+        const totalCostUsd = (response.promptTokens * 0.00000015) + (response.completionTokens * 0.0000006);
+        const metrics = {
+            agentRole: 'performance_agent',
+            durationMs,
+            promptTokens: response.promptTokens,
+            completionTokens: response.completionTokens,
+            totalCostUsd,
+            findingsCount: findings.length,
+        };
+        return { findings, metrics };
     }
-    durationMs = Date.now() - startTime;
-    totalCostUsd = (response.promptTokens * 0.00000015) + (response.completionTokens * 0.0000006);
-    metrics = {
-        agentRole: 'performance_agent',
-        durationMs,
-        promptTokens: response.promptTokens,
-        completionTokens: response.completionTokens,
-        totalCostUsd,
-        findingsCount: findings.length,
-    };
 }
-return { findings, metrics };

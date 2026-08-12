@@ -4,7 +4,4 @@ export declare class PerformanceAgent {
         findings: ReviewFinding[];
         metrics: AgentExecutionMetrics;
     }>;
-    const durationMs: number;
-    const totalCostUsd: number;
-    const metrics: AgentExecutionMetrics;
 }

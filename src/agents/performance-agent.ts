@@ -44,18 +44,18 @@ export class PerformanceAgent {
       guidelines: guidelines.filter(g => g.category === 'performance'),
     };
 
-    const systemPrompt = \You are the DevSecAI Performance & Concurrency Engineering Specialist.
+    const systemPrompt = `You are the DevSecAI Performance & Concurrency Engineering Specialist.
 Your objective: Audit code diffs for N+1 database queries, unhandled async promises, memory leaks, unindexed query filters, race conditions, and blocking operations.
 
 CRITICAL INSTRUCTIONS:
 1. Detect real performance and concurrency anti-patterns in newly added code (+ lines).
 2. Report with file, line number, severity ('high' | 'medium' | 'low'), exact code snippet, and optimized replacement fix.
-3. Return strict JSON matching: { "findings": [...] }\;
+3. Return strict JSON matching: { "findings": [...] }`;
 
-    const userPrompt = \Audit this Pull Request diff for performance, scaling, and concurrency flaws:
-\\\\\\\\\json
-\
-\\\\\\\\\\;
+    const userPrompt = `Audit this Pull Request diff for performance, scaling, and concurrency flaws:
+\`\`\`json
+${JSON.stringify(promptPayload, null, 2)}
+\`\`\``;
 
     const response = await LLMProvider.generateCompletion({
       systemPrompt,
@@ -77,7 +77,7 @@ CRITICAL INSTRUCTIONS:
         const rawObj = JSON.parse(response.content);
         if (Array.isArray(rawObj.findings)) {
           findings = rawObj.findings.map((f: any) => ({
-            id: f.id || \perf-\\,
+            id: f.id || `perf-${Math.random().toString(36).substring(2, 8)}`,
             file: f.file || 'unknown',
             line: Number(f.line) || 1,
             severity: f.severity || 'medium',
