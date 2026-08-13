@@ -35,8 +35,8 @@ export class LLMProvider {
   private static async callGemini(options: LLMPromptOptions): Promise<LLMResponse> {
     const model = config.AI_MODEL_NAME.includes('gemini') ? config.AI_MODEL_NAME : 'gemini-1.5-flash';
     const apiKey = config.GEMINI_API_KEY;
-    const url = \https://generativelanguage.googleapis.com/v1beta/models/\:generateContent?key=\\;
-    const promptText = \\\n\n\\n\nCRITICAL: Respond ONLY with valid parseable JSON matching schema.\;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const promptText = `${options.systemPrompt}\n\n${options.userPrompt}\n\nCRITICAL: Respond ONLY with valid parseable JSON matching schema.`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -66,7 +66,7 @@ export class LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': \Bearer \\,
+        'Authorization': `Bearer ${config.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model,
@@ -89,7 +89,7 @@ export class LLMProvider {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': \Bearer \\,
+        'Authorization': `Bearer ${config.GROQ_API_KEY}`,
       },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
@@ -112,7 +112,7 @@ export class LLMProvider {
     const userPrompt = options.userPrompt;
     let payload: any = {};
     try {
-      const match = userPrompt.match(/`json\n([\s\S]*?)\n`/);
+      const match = userPrompt.match(/```json\n([\s\S]*?)\n```/);
       if (match) payload = JSON.parse(match[1]);
     } catch {}
 
@@ -126,24 +126,24 @@ export class LLMProvider {
         const file = block.filePath;
         const startLine = block.startLine;
 
-        if (/(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:\$\{[^}]+\}|\+\s*[a-zA-Z0-9_$]+)/i.test(code) || /db\.query\s*\(\s*\[^\]*\$\{[^\]+\}\/i.test(code)) {
+        if (/(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:\$\{[^}]+\}|\+\s*[a-zA-Z0-9_$]+)/i.test(code) || /db\.query\s*\(\s*`[^`]*\$\{[^`]+\}`/i.test(code)) {
           findings.push({
-            id: \sec-\\,
+            id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
             line: startLine,
             severity: 'critical',
             category: 'security',
-            title: \Unparameterized SQL Injection in \\,
-            description: 'User input is interpolated directly into an SQL query string without parameter placeholders (, ?).',
+            title: `Unparameterized SQL Injection in ${block.functionName || 'query'}`,
+            description: 'User input is interpolated directly into an SQL query string without parameter placeholders ($1, ?).',
             cwe: 'CWE-89: SQL Injection',
             codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: \const query = 'SELECT * FROM table WHERE id = ';\nawait db.query(query, [inputParam]);\,
+            suggestedFix: `const query = 'SELECT * FROM table WHERE id = $1';\nawait db.query(query, [inputParam]);`,
             confidence: 0.98,
           });
         }
         if (/(?:secret|jwt_secret|api_key|private_key|token|password|STRIPE_SECRET|AWS_SECRET)\s*[:=]\s*['"]([^'"]{10,})['"]/i.test(code)) {
           findings.push({
-            id: \sec-\\,
+            id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
             line: startLine,
             severity: 'critical',
@@ -152,13 +152,13 @@ export class LLMProvider {
             description: 'Sensitive credentials are committed directly in source code.',
             cwe: 'CWE-798: Use of Hard-coded Credentials',
             codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: \export const SECRET_KEY = process.env.SECRET_KEY;\,
+            suggestedFix: `export const SECRET_KEY = process.env.SECRET_KEY;`,
             confidence: 0.99,
           });
         }
         if (/(?:eval|new\s+Function|vm\.runInContext)\s*\(/.test(code)) {
           findings.push({
-            id: \sec-\\,
+            id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
             line: startLine,
             severity: 'high',
@@ -167,7 +167,7 @@ export class LLMProvider {
             description: 'Executing dynamically evaluated code from unvalidated payloads allows Remote Code Execution.',
             cwe: 'CWE-95: Improper Directives in Dynamically Evaluated Code',
             codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: \const data = JSON.parse(rawJsonString);\,
+            suggestedFix: `const data = JSON.parse(rawJsonString);`,
             confidence: 0.96,
           });
         }
@@ -182,16 +182,16 @@ export class LLMProvider {
 
         if (/(?:for\s*\([^)]+\)|for\s+await|\.forEach|\.map\s*\(\s*async)[\s\S]*?(?:await\s+(?:db\.|prisma\.|User\.|find|query))/.test(code)) {
           findings.push({
-            id: \perf-\\,
+            id: `perf-${Math.random().toString(36).substring(2, 9)}`,
             file,
             line: startLine,
             severity: 'high',
             category: 'performance',
-            title: \N+1 Database Query Pattern in \\,
+            title: `N+1 Database Query Pattern in ${block.functionName || 'loop'}`,
             description: 'Sequential asynchronous database lookups in a loop lead to connection pool saturation.',
             cwe: 'CWE-400: Uncontrolled Resource Consumption',
             codeSnippet: code.substring(0, 150),
-            suggestedFix: \const ids = items.map(i => i.id);\nconst results = await db.entity.findMany({ where: { id: { in: ids } } });\,
+            suggestedFix: `const ids = items.map(i => i.id);\nconst results = await db.entity.findMany({ where: { id: { in: ids } } });`,
             confidence: 0.96,
           });
         }
@@ -200,12 +200,12 @@ export class LLMProvider {
     } else if (system.includes('Test Generation')) {
       const flaggedIssues: any[] = payload.flaggedIssues || [];
       const unitTests = flaggedIssues.map(issue => ({
-        id: \	est-\\,
+        id: `test-${Math.random().toString(36).substring(2, 9)}`,
         targetFile: issue.file.replace(/\.(ts|js)$/, '.test.ts'),
         targetFunction: issue.title.includes('in ') ? issue.title.split('in ')[1] : 'handler',
         testFramework: 'vitest',
-        testCode: \import { describe, it, expect, vi } from 'vitest';\n\ndescribe('\ Test Suite', () => {\n  it('should validate inputs and prevent regressions', async () => {\n    expect(true).toBe(true);\n  });\n});\,
-        rationale: \Regression test covering \\,
+        testCode: `import { describe, it, expect, vi } from 'vitest';\n\ndescribe('${issue.file} Test Suite', () => {\n  it('should validate inputs and prevent regressions', async () => {\n    expect(true).toBe(true);\n  });\n});`,
+        rationale: `Regression test covering ${issue.title}`,
         coversVulnerability: issue.cwe,
       }));
       resultJson = { unitTests };
