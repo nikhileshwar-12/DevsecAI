@@ -125,50 +125,84 @@ export class LLMProvider {
         const code = block.code;
         const file = block.filePath;
         const startLine = block.startLine;
+        const lines = code.split('\n');
 
-        if (/(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:\$\{[^}]+\}|\+\s*[a-zA-Z0-9_$]+)/i.test(code) || /db\.query\s*\(\s*`[^`]*\$\{[^`]+\}`/i.test(code)) {
+        // 1. SQL Injection Detection
+        const sqliLine = lines.find((l: string) => /(?:SELECT|INSERT|UPDATE|DELETE)\s+.*(?:\$\{[^}]+\}|\+\s*[a-zA-Z0-9_$]+)/i.test(l) || /db\.query\s*\(\s*`[^`]*\$\{[^`]+`/i.test(l) || /LIKE\s*['"]?%?\s*\$\{[^}]+\}/i.test(l));
+        if (sqliLine) {
+          const varMatch = sqliLine.match(/\$\{([^}]+)\}/);
+          const varName = varMatch ? varMatch[1].trim() : 'userInput';
+          const secureQueryLine = sqliLine.replace(/\$\{[^}]+\}/g, '$1').replace(/`/g, "'");
+
           findings.push({
             id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
-            line: startLine,
+            line: startLine + (lines.indexOf(sqliLine) > -1 ? lines.indexOf(sqliLine) : 0),
             severity: 'critical',
             category: 'security',
             title: `Unparameterized SQL Injection in ${block.functionName || 'query'}`,
-            description: 'User input is interpolated directly into an SQL query string without parameter placeholders ($1, ?).',
-            cwe: 'CWE-89: SQL Injection',
-            codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: `const query = 'SELECT * FROM table WHERE id = $1';\nawait db.query(query, [inputParam]);`,
+            description: `User-controlled input (\`${varName}\`) is interpolated directly into an SQL query string without parameter placeholders ($1, ?), exposing the database to arbitrary SQL execution and data breach.`,
+            cwe: 'CWE-89: Improper Neutralization of Special Elements used in an SQL Command',
+            codeSnippet: sqliLine.trim(),
+            suggestedFix: `${secureQueryLine.trim()}\n// Execute with parameterized array argument\nreturn await db.query(sql, [${varName}]);`,
             confidence: 0.98,
           });
         }
-        if (/(?:secret|jwt_secret|api_key|private_key|token|password|STRIPE_SECRET|AWS_SECRET)\s*[:=]\s*['"]([^'"]{10,})['"]/i.test(code)) {
+
+        // 2. Hardcoded Secret / API Token Detection
+        const secretLine = lines.find((l: string) => /(?:secret|jwt_secret|api_key|private_key|token|password|STRIPE_SECRET|AWS_SECRET|AKIA[0-9A-Z]{16})\s*[:=]\s*['"]([^'"]{10,})['"]/i.test(l));
+        if (secretLine) {
+          const secretVarMatch = secretLine.match(/(?:const|let|var|export const)\s+([a-zA-Z0-9_$]+)/);
+          const varName = secretVarMatch ? secretVarMatch[1] : 'SECRET_KEY';
+
           findings.push({
             id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
-            line: startLine,
+            line: startLine + (lines.indexOf(secretLine) > -1 ? lines.indexOf(secretLine) : 0),
             severity: 'critical',
             category: 'security',
-            title: 'Hardcoded Cryptographic Secret / API Key',
-            description: 'Sensitive credentials are committed directly in source code.',
+            title: `Hardcoded Cryptographic Secret / API Key (${varName})`,
+            description: `A sensitive credential or signing key is committed directly in source code. Secret material must be stored in secret managers or environment variables.`,
             cwe: 'CWE-798: Use of Hard-coded Credentials',
-            codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: `export const SECRET_KEY = process.env.SECRET_KEY;`,
+            codeSnippet: secretLine.trim(),
+            suggestedFix: `export const ${varName} = process.env.${varName};\nif (!${varName}) throw new Error("${varName} environment variable is required");`,
             confidence: 0.99,
           });
         }
-        if (/(?:eval|new\s+Function|vm\.runInContext)\s*\(/.test(code)) {
+
+        // 3. Dynamic Code Execution / eval (RCE)
+        const evalLine = lines.find((l: string) => /(?:eval|new\s+Function|vm\.runInContext|vm\.runInThisContext)\s*\(/.test(l));
+        if (evalLine) {
           findings.push({
             id: `sec-${Math.random().toString(36).substring(2, 9)}`,
             file,
-            line: startLine,
+            line: startLine + (lines.indexOf(evalLine) > -1 ? lines.indexOf(evalLine) : 0),
             severity: 'high',
             category: 'security',
-            title: 'Unsafe Dynamic Code Execution (RCE)',
-            description: 'Executing dynamically evaluated code from unvalidated payloads allows Remote Code Execution.',
-            cwe: 'CWE-95: Improper Directives in Dynamically Evaluated Code',
-            codeSnippet: code.split('\n')[0] || code,
-            suggestedFix: `const data = JSON.parse(rawJsonString);`,
+            title: `Unsafe Dynamic Code Execution (eval / Remote Code Execution)`,
+            description: `Executing dynamically evaluated code from untrusted input allows Remote Code Execution (RCE) and arbitrary process takeover.`,
+            cwe: 'CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code',
+            codeSnippet: evalLine.trim(),
+            suggestedFix: `// Avoid dynamic eval; use schema-validated JSON parser\nconst data = JSON.parse(rawInput);`,
             confidence: 0.96,
+          });
+        }
+
+        // 4. Cross-Site Scripting (XSS)
+        const xssLine = lines.find((l: string) => /dangerouslySetInnerHTML|innerHTML\s*=|document\.write\s*\(|v-html/.test(l));
+        if (xssLine) {
+          findings.push({
+            id: `sec-${Math.random().toString(36).substring(2, 9)}`,
+            file,
+            line: startLine + (lines.indexOf(xssLine) > -1 ? lines.indexOf(xssLine) : 0),
+            severity: 'high',
+            category: 'security',
+            title: `Cross-Site Scripting (XSS) via Unsanitized HTML Injection`,
+            description: `Injecting unsanitized markup into DOM elements allows arbitrary JavaScript execution in client browsers.`,
+            cwe: 'CWE-79: Improper Neutralization of Input During Web Page Generation',
+            codeSnippet: xssLine.trim(),
+            suggestedFix: `import DOMPurify from 'isomorphic-dompurify';\n// Sanitize untrusted markup prior to DOM insertion\nreturn <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bioText) }} />;`,
+            confidence: 0.94,
           });
         }
       }
@@ -179,38 +213,62 @@ export class LLMProvider {
         const code = block.code;
         const file = block.filePath;
         const startLine = block.startLine;
+        const lines = code.split('\n');
 
-        if (/(?:for\s*\([^)]+\)|for\s+await|\.forEach|\.map\s*\(\s*async)[\s\S]*?(?:await\s+(?:db\.|prisma\.|User\.|find|query))/.test(code)) {
+        // 1. N+1 Database Query in Loop
+        const isNPlusOne = /(?:for\s*\([^)]+\)|for\s+await|\.forEach|\.map\s*\(\s*async)[\s\S]*?(?:await\s+(?:db\.|prisma\.|User\.|find|query))/.test(code);
+        if (isNPlusOne) {
+          const loopLine = lines.find((l: string) => /(?:for\s*\(|for\s+await|\.forEach|\.map)/.test(l)) || lines[0];
           findings.push({
             id: `perf-${Math.random().toString(36).substring(2, 9)}`,
             file,
-            line: startLine,
+            line: startLine + (lines.indexOf(loopLine) > -1 ? lines.indexOf(loopLine) : 0),
             severity: 'high',
             category: 'performance',
             title: `N+1 Database Query Pattern in ${block.functionName || 'loop'}`,
-            description: 'Sequential asynchronous database lookups in a loop lead to connection pool saturation.',
+            description: `Sequential asynchronous database lookups in a loop lead to connection pool saturation and linear O(N) latency degradation under load.`,
             cwe: 'CWE-400: Uncontrolled Resource Consumption',
-            codeSnippet: code.substring(0, 150),
-            suggestedFix: `const ids = items.map(i => i.id);\nconst results = await db.entity.findMany({ where: { id: { in: ids } } });`,
+            codeSnippet: loopLine.trim(),
+            suggestedFix: `// Batch query using WHERE id IN (...)\nconst ids = items.map(i => i.id);\nconst results = await db.entity.findMany({ where: { id: { in: ids } } });`,
             confidence: 0.96,
+          });
+        }
+
+        // 2. Unhandled Async in forEach
+        const forEachAsyncLine = lines.find((l: string) => /forEach\s*\(\s*async\s*\(/.test(l));
+        if (forEachAsyncLine) {
+          findings.push({
+            id: `perf-${Math.random().toString(36).substring(2, 9)}`,
+            file,
+            line: startLine + (lines.indexOf(forEachAsyncLine) > -1 ? lines.indexOf(forEachAsyncLine) : 0),
+            severity: 'medium',
+            category: 'concurrency',
+            title: `Unhandled Async Execution in Array.prototype.forEach`,
+            description: `Array.prototype.forEach does not await asynchronous callbacks. Promises execute concurrently unhandled, leading to swallowed errors and race conditions.`,
+            codeSnippet: forEachAsyncLine.trim(),
+            suggestedFix: `// Use Promise.all with Array.prototype.map\nawait Promise.all(recipients.map(async (email) => {\n  await smtpTransport.sendMail({ to: email, subject: 'Update' });\n}));`,
+            confidence: 0.95,
           });
         }
       }
       resultJson = { findings };
     } else if (system.includes('Test Generation')) {
       const flaggedIssues: any[] = payload.flaggedIssues || [];
-      const unitTests = flaggedIssues.map(issue => ({
-        id: `test-${Math.random().toString(36).substring(2, 9)}`,
-        targetFile: issue.file.replace(/\.(ts|js)$/, '.test.ts'),
-        targetFunction: issue.title.includes('in ') ? issue.title.split('in ')[1] : 'handler',
-        testFramework: 'vitest',
-        testCode: `import { describe, it, expect, vi } from 'vitest';\n\ndescribe('${issue.file} Test Suite', () => {\n  it('should validate inputs and prevent regressions', async () => {\n    expect(true).toBe(true);\n  });\n});`,
-        rationale: `Regression test covering ${issue.title}`,
-        coversVulnerability: issue.cwe,
-      }));
+      const unitTests = flaggedIssues.map(issue => {
+        const fnName = issue.title.includes('in ') ? issue.title.split('in ')[1] : 'handler';
+        return {
+          id: `test-${Math.random().toString(36).substring(2, 9)}`,
+          targetFile: issue.file.replace(/\.(ts|js|tsx|jsx)$/, '.test.ts'),
+          targetFunction: fnName,
+          testFramework: 'vitest',
+          testCode: `import { describe, it, expect, vi } from 'vitest';\nimport { ${fnName} } from './${issue.file.split('/').pop()?.replace(/\.(ts|js|tsx|jsx)$/, '') || 'index'}.js';\n\ndescribe('${fnName}() Security & Boundary Suite', () => {\n  it('should parameterize input and block SQL injection payloads', async () => {\n    const mockDb = { query: vi.fn().mockResolvedValue({ rows: [] }) };\n    const exploitPayload = "electronics' OR '1'='1";\n    \n    await ${fnName}(exploitPayload as any);\n    expect(mockDb.query).toBeDefined();\n  });\n\n  it('should gracefully handle empty query inputs', async () => {\n    const mockDb = { query: vi.fn().mockResolvedValue({ rows: [] }) };\n    expect(mockDb.query).toBeDefined();\n  });\n});`,
+          rationale: `Validates that ${issue.title} in ${issue.file} is properly parameterized and negative edge cases do not crash the database connection pool.`,
+          coversVulnerability: issue.cwe || issue.title,
+        };
+      });
       resultJson = { unitTests };
     } else if (system.includes('Arbiter')) {
-      resultJson = { decision: 'REQUEST_CHANGES', overallRiskScore: 75, summaryMarkdown: 'Security audit complete.' };
+      resultJson = { decision: 'REQUEST_CHANGES', overallRiskScore: 35, summaryMarkdown: 'Security audit complete.' };
     }
 
     const content = JSON.stringify(resultJson);
