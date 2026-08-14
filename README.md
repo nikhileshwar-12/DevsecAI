@@ -1,5 +1,6 @@
 ﻿# 🛡️ DevSecAI v2.0 – Autonomous Multi-Agent GitHub PR Reviewer & Security Auditing Platform
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-devsecai--nikhil.onrender.com-brightgreen.svg?logo=render)](https://devsecai-nikhil.onrender.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg?logo=node.js)](https://nodejs.org/)
 [![Vitest](https://img.shields.io/badge/Vitest-2.x-yellow.svg?logo=vitest)](https://vitest.dev/)
@@ -8,6 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 
 > An enterprise-grade, distributed AI agent platform in **TypeScript** that intercepts GitHub Pull Requests, performs AST-level code diff chunking, detects OWASP Top 10 security vulnerabilities and N+1 performance bottlenecks, autonomously synthesizes regression unit test suites, auto-generates 1-click git remediation patches, exports OASIS SARIF v2.1.0 reports, and benchmarks multi-model LLM accuracy.
+
+🌐 **Live Web Application:** [https://devsecai-nikhil.onrender.com](https://devsecai-nikhil.onrender.com)
 
 ---
 
