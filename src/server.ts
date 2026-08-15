@@ -169,7 +169,6 @@ app.get('/', (c) => {
   <title>DevSecAI – Autonomous Multi-Agent Security Platform</title>
   <meta name="description" content="Autonomous Multi-Agent GitHub PR Reviewer & Security Auditing Platform in TypeScript.">
   
-  <!-- OpenGraph Meta Tags for LinkedIn / Social Previews -->
   <meta property="og:title" content="DevSecAI – Autonomous Multi-Agent Security Platform">
   <meta property="og:description" content="Autonomous Multi-Agent PR Reviewer & Security Auditing Platform with AST diff chunking, 1-click auto-remediation, and Vitest test synthesis.">
   <meta property="og:url" content="https://devsecai-nikhil.onrender.com">
@@ -301,7 +300,7 @@ app.get('/', (c) => {
     .sample-presets {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 8px;
       margin-bottom: 0.75rem;
     }
 
@@ -309,13 +308,15 @@ app.get('/', (c) => {
       background: #1e293b;
       color: #93c5fd;
       border: 1px solid #334155;
-      padding: 4px 10px;
+      padding: 6px 12px;
       border-radius: 6px;
-      font-size: 0.75rem;
+      font-size: 0.78rem;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
+      transition: all 0.15s;
     }
-    .preset-btn:hover { background: #2563eb; color: #ffffff; }
+    .preset-btn:hover { background: #2563eb; color: #ffffff; border-color: #3b82f6; }
+    .preset-btn:active { transform: scale(0.97); }
 
     textarea {
       width: 100%;
@@ -479,14 +480,33 @@ app.get('/', (c) => {
           <div class="card">
             <div class="card-title">
               <span>Git Pull Request Diff</span>
-              <span style="font-size: 0.72rem; color: var(--text-muted)">Unified Diff</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted)">Click a preset or paste diff</span>
             </div>
             <div class="sample-presets">
-              <button type="button" class="preset-btn" id="btn-sample-sqli" onclick="document.getElementById('diffInput').value = window.samples.sqli; window.executeReview();">SQLi & Hardcoded Key</button>
-              <button type="button" class="preset-btn" id="btn-sample-nplus1" onclick="document.getElementById('diffInput').value = window.samples.nplus1; window.executeReview();">N+1 Query & Leaks</button>
-              <button type="button" class="preset-btn" id="btn-sample-clean" onclick="document.getElementById('diffInput').value = window.samples.clean; window.executeReview();">Clean Diff (Pass)</button>
+              <button type="button" class="preset-btn" onclick="setPreset('sqli')">SQLi & Hardcoded Key</button>
+              <button type="button" class="preset-btn" onclick="setPreset('nplus1')">N+1 Query & Leaks</button>
+              <button type="button" class="preset-btn" onclick="setPreset('clean')">Clean Diff (Pass)</button>
             </div>
-            <textarea id="diffInput"></textarea>
+            <textarea id="diffInput">diff --git a/src/routes/users.ts b/src/routes/users.ts
+index 83a12b4..992f1c8 100644
+--- a/src/routes/users.ts
++++ b/src/routes/users.ts
+@@ -10,6 +10,14 @@ import { Database } from '../db/client.js';
+ export async function searchUsers(db: Database, emailQuery: string) {
++  // Raw unparameterized SQL concatenation
++  const query = \`SELECT id, name, email, role FROM users WHERE email LIKE '\${emailQuery}%' AND is_active = true\`;
++  const result = await db.query(query);
++  return result.rows;
++}
+
+diff --git a/src/config/auth.ts b/src/config/auth.ts
+index 45ef201..89aa102 100644
+--- a/src/config/auth.ts
++++ b/src/config/auth.ts
+@@ -1,5 +1,8 @@
+-export const JWT_SECRET = process.env.JWT_SECRET;
++export const JWT_SECRET = "super_secret_jwt_key_998124_do_not_share";
++export const TOKEN_EXPIRY = '24h';</textarea>
             <button id="runBtn" class="btn-action" style="width: 100%; margin-top: 0.75rem;" onclick="executeReview()">
               <span>⚡ Run Autonomous Multi-Agent Audit</span>
             </button>
@@ -518,7 +538,7 @@ app.get('/', (c) => {
               <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🤖</div>
               <h3>Autonomous Agent Engine Ready</h3>
               <p style="font-size: 0.85rem; max-width: 400px; margin: 0.5rem auto;">
-                Paste a PR diff on the left and click Audit to dispatch parallel AST and security agents.
+                Click any preset button above or click 'Run Autonomous Multi-Agent Audit' to start.
               </p>
             </div>
           </div>
@@ -602,61 +622,19 @@ app.get('/', (c) => {
   <script>
     let lastReviewData = null;
 
-    const samples = {
-      sqli: \`diff --git a/src/routes/users.ts b/src/routes/users.ts
-index 83a12b4..992f1c8 100644
---- a/src/routes/users.ts
-+++ b/src/routes/users.ts
-@@ -10,6 +10,14 @@ import { Database } from '../db/client.js';
- export async function searchUsers(db: Database, emailQuery: string) {
-+  // Raw unparameterized SQL concatenation
-+  const query = \\\`SELECT id, name, email, role FROM users WHERE email LIKE '\${emailQuery}%' AND is_active = true\\\`;
-+  const result = await db.query(query);
-+  return result.rows;
-+}
-
-diff --git a/src/config/auth.ts b/src/config/auth.ts
-index 45ef201..89aa102 100644
---- a/src/config/auth.ts
-+++ b/src/config/auth.ts
-@@ -1,5 +1,8 @@
--export const JWT_SECRET = process.env.JWT_SECRET;
-+export const JWT_SECRET = "super_secret_jwt_key_998124_do_not_share";
-+export const TOKEN_EXPIRY = '24h';\`,
-
-      nplus1: \`diff --git a/src/services/billing.ts b/src/services/billing.ts
-index 72b381a..18ca9f2 100644
---- a/src/services/billing.ts
-+++ b/src/services/billing.ts
-@@ -25,12 +25,16 @@ export async function generateMonthlyInvoices(db: any, month: string) {
-   const orders = await db.orders.findMany({ where: { billingMonth: month } });
-   const invoices = [];
-   
-+  // N+1 Query in Loop
-+  for (const order of orders) {
-+    const customer = await db.customers.findUnique({ where: { id: order.customerId } });
-+    const paymentMethod = await db.paymentMethods.findFirst({ where: { customerId: customer.id } });
-+    invoices.push({ order, customer, paymentMethod });
-+  }
-+  
-   return invoices;
- }\`,
-
-      clean: \`diff --git a/src/utils/math.ts b/src/utils/math.ts
-new file mode 100644
-index 0000000..342a1bc
---- /dev/null
-+++ b/src/utils/math.ts
-@@ -0,0 +1,10 @@
-+export function calculateDiscount(price: number, percent: number): number {
-+  if (price < 0 || percent < 0 || percent > 100) {
-+    throw new Error('Invalid price or discount percentage');
-+  }
-+  return Number((price * (1 - percent / 100)).toFixed(2));
-+}\`
+    const PRESETS = {
+      sqli: "diff --git a/src/routes/users.ts b/src/routes/users.ts\\nindex 83a12b4..992f1c8 100644\\n--- a/src/routes/users.ts\\n+++ b/src/routes/users.ts\\n@@ -10,6 +10,14 @@ import { Database } from '../db/client.js';\\n export async function searchUsers(db: Database, emailQuery: string) {\\n+  // Raw unparameterized SQL concatenation\\n+  const query = \`SELECT id, name, email, role FROM users WHERE email LIKE '\${emailQuery}%' AND is_active = true\`;\\n+  const result = await db.query(query);\\n+  return result.rows;\\n+}\\n\\ndiff --git a/src/config/auth.ts b/src/config/auth.ts\\nindex 45ef201..89aa102 100644\\n--- a/src/config/auth.ts\\n+++ b/src/config/auth.ts\\n@@ -1,5 +1,8 @@\\n-export const JWT_SECRET = process.env.JWT_SECRET;\\n+export const JWT_SECRET = \\\"super_secret_jwt_key_998124_do_not_share\\\";\\n+export const TOKEN_EXPIRY = '24h';",
+      nplus1: "diff --git a/src/services/billing.ts b/src/services/billing.ts\\nindex 72b381a..18ca9f2 100644\\n--- a/src/services/billing.ts\\n+++ b/src/services/billing.ts\\n@@ -25,12 +25,16 @@ export async function generateMonthlyInvoices(db: any, month: string) {\\n   const orders = await db.orders.findMany({ where: { billingMonth: month } });\\n   const invoices = [];\\n   \\n+  // N+1 Query in Loop\\n+  for (const order of orders) {\\n+    const customer = await db.customers.findUnique({ where: { id: order.customerId } });\\n+    const paymentMethod = await db.paymentMethods.findFirst({ where: { customerId: customer.id } });\\n+    invoices.push({ order, customer, paymentMethod });\\n+  }\\n+  \\n   return invoices;\\n }",
+      clean: "diff --git a/src/utils/math.ts b/src/utils/math.ts\\nnew file mode 100644\\nindex 0000000..342a1bc\\n--- /dev/null\\n+++ b/src/utils/math.ts\\n@@ -0,0 +1,10 @@\\n+export function calculateDiscount(price: number, percent: number): number {\\n+  if (price < 0 || percent < 0 || percent > 100) {\\n+    throw new Error('Invalid price or discount percentage');\\n+  }\\n+  return Number((price * (1 - percent / 100)).toFixed(2));\\n+}"
     };
 
-    window.samples = samples;
+    function setPreset(key) {
+      const el = document.getElementById('diffInput');
+      if (el && PRESETS[key]) {
+        el.value = PRESETS[key];
+        executeReview();
+      }
+    }
 
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -670,40 +648,14 @@ index 0000000..342a1bc
 
       if (tabId === 'policies') loadPolicies();
       
-      // Auto-run review if switching to remediation or blast radius and none was run yet
       if ((tabId === 'remediation' || tabId === 'blast') && !lastReviewData) {
         executeReview();
       }
     }
 
-    window.loadSample = function(key, autoRun = false) {
-      const el = document.getElementById('diffInput');
-      if (el && samples[key]) {
-        el.value = samples[key];
-        if (autoRun) {
-          executeReview();
-        }
-      }
-    };
-
-    window.addEventListener('DOMContentLoaded', () => {
-      window.loadSample('sqli');
-
-      const btnSqli = document.getElementById('btn-sample-sqli');
-      if (btnSqli) btnSqli.addEventListener('click', () => window.loadSample('sqli', true));
-
-      const btnNplus1 = document.getElementById('btn-sample-nplus1');
-      if (btnNplus1) btnNplus1.addEventListener('click', () => window.loadSample('nplus1', true));
-
-      const btnClean = document.getElementById('btn-sample-clean');
-      if (btnClean) btnClean.addEventListener('click', () => window.loadSample('clean', true));
-    });
-
-    // Also run immediately
-    window.loadSample('sqli');
-
     async function executeReview() {
-      const diff = document.getElementById('diffInput').value.trim();
+      const el = document.getElementById('diffInput');
+      const diff = el ? el.value.trim() : '';
       if (!diff) return alert('Please enter or select a diff');
 
       const btn = document.getElementById('runBtn');
@@ -744,7 +696,6 @@ index 0000000..342a1bc
         }
       }
     }
-    window.executeReview = executeReview;
 
     function setAgentStatus(id, state, text) {
       const el = document.getElementById('step-' + id);
@@ -856,7 +807,6 @@ index 0000000..342a1bc
 
       const colors = { vulnerable_file: '#ef4444', api_endpoint: '#3b82f6', database_table: '#8b5cf6', dependent_service: '#10b981' };
 
-      // Render nodes
       blast.nodes.forEach((node, i) => {
         const x = 90 + (i % 3) * 230;
         const y = 80 + Math.floor(i / 3) * 110;
