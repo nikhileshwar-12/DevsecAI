@@ -942,6 +942,15 @@ console.log(`🛡️  DevSecAI Platform v2.0 is running!`);
 console.log(`👉 Open Dashboard: http://localhost:${port}`);
 console.log(`===============================================================\n`);
 
+// High-Efficiency Keepalive Engine (Prevents Render from sleeping)
+if (process.env.NODE_ENV === 'production') {
+  setInterval(async () => {
+    try {
+      await fetch(`http://localhost:${port}/health`);
+    } catch {}
+  }, 1000 * 60 * 10); // Ping every 10 mins
+}
+
 serve({
   fetch: app.fetch,
   port,
