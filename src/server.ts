@@ -482,9 +482,9 @@ app.get('/', (c) => {
               <span style="font-size: 0.72rem; color: var(--text-muted)">Unified Diff</span>
             </div>
             <div class="sample-presets">
-              <button class="preset-btn" onclick="loadSample('sqli')">SQLi & Hardcoded Key</button>
-              <button class="preset-btn" onclick="loadSample('nplus1')">N+1 Query & Leaks</button>
-              <button class="preset-btn" onclick="loadSample('clean')">Clean Diff (Pass)</button>
+              <button type="button" class="preset-btn" id="btn-sample-sqli" onclick="window.loadSample('sqli')">SQLi & Hardcoded Key</button>
+              <button type="button" class="preset-btn" id="btn-sample-nplus1" onclick="window.loadSample('nplus1')">N+1 Query & Leaks</button>
+              <button type="button" class="preset-btn" id="btn-sample-clean" onclick="window.loadSample('clean')">Clean Diff (Pass)</button>
             </div>
             <textarea id="diffInput"></textarea>
             <button id="runBtn" class="btn-action" style="width: 100%; margin-top: 0.75rem;" onclick="executeReview()">
@@ -676,13 +676,22 @@ index 0000000..342a1bc
 
     window.loadSample = function(key) {
       const el = document.getElementById('diffInput');
-      if (el) {
-        el.value = samples[key] || '';
+      if (el && samples[key]) {
+        el.value = samples[key];
       }
     };
 
     window.addEventListener('DOMContentLoaded', () => {
       window.loadSample('sqli');
+
+      const btnSqli = document.getElementById('btn-sample-sqli');
+      if (btnSqli) btnSqli.addEventListener('click', () => window.loadSample('sqli'));
+
+      const btnNplus1 = document.getElementById('btn-sample-nplus1');
+      if (btnNplus1) btnNplus1.addEventListener('click', () => window.loadSample('nplus1'));
+
+      const btnClean = document.getElementById('btn-sample-clean');
+      if (btnClean) btnClean.addEventListener('click', () => window.loadSample('clean'));
     });
 
     // Also run immediately
