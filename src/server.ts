@@ -482,9 +482,9 @@ app.get('/', (c) => {
               <span style="font-size: 0.72rem; color: var(--text-muted)">Unified Diff</span>
             </div>
             <div class="sample-presets">
-              <button type="button" class="preset-btn" id="btn-sample-sqli" onclick="window.loadSample('sqli')">SQLi & Hardcoded Key</button>
-              <button type="button" class="preset-btn" id="btn-sample-nplus1" onclick="window.loadSample('nplus1')">N+1 Query & Leaks</button>
-              <button type="button" class="preset-btn" id="btn-sample-clean" onclick="window.loadSample('clean')">Clean Diff (Pass)</button>
+              <button type="button" class="preset-btn" id="btn-sample-sqli" onclick="document.getElementById('diffInput').value = window.samples.sqli; window.executeReview();">SQLi & Hardcoded Key</button>
+              <button type="button" class="preset-btn" id="btn-sample-nplus1" onclick="document.getElementById('diffInput').value = window.samples.nplus1; window.executeReview();">N+1 Query & Leaks</button>
+              <button type="button" class="preset-btn" id="btn-sample-clean" onclick="document.getElementById('diffInput').value = window.samples.clean; window.executeReview();">Clean Diff (Pass)</button>
             </div>
             <textarea id="diffInput"></textarea>
             <button id="runBtn" class="btn-action" style="width: 100%; margin-top: 0.75rem;" onclick="executeReview()">
@@ -656,6 +656,8 @@ index 0000000..342a1bc
 +}\`
     };
 
+    window.samples = samples;
+
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -742,6 +744,7 @@ index 0000000..342a1bc
         }
       }
     }
+    window.executeReview = executeReview;
 
     function setAgentStatus(id, state, text) {
       const el = document.getElementById('step-' + id);
