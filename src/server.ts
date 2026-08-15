@@ -674,10 +674,13 @@ index 0000000..342a1bc
       }
     }
 
-    window.loadSample = function(key) {
+    window.loadSample = function(key, autoRun = false) {
       const el = document.getElementById('diffInput');
       if (el && samples[key]) {
         el.value = samples[key];
+        if (autoRun) {
+          executeReview();
+        }
       }
     };
 
@@ -685,13 +688,13 @@ index 0000000..342a1bc
       window.loadSample('sqli');
 
       const btnSqli = document.getElementById('btn-sample-sqli');
-      if (btnSqli) btnSqli.addEventListener('click', () => window.loadSample('sqli'));
+      if (btnSqli) btnSqli.addEventListener('click', () => window.loadSample('sqli', true));
 
       const btnNplus1 = document.getElementById('btn-sample-nplus1');
-      if (btnNplus1) btnNplus1.addEventListener('click', () => window.loadSample('nplus1'));
+      if (btnNplus1) btnNplus1.addEventListener('click', () => window.loadSample('nplus1', true));
 
       const btnClean = document.getElementById('btn-sample-clean');
-      if (btnClean) btnClean.addEventListener('click', () => window.loadSample('clean'));
+      if (btnClean) btnClean.addEventListener('click', () => window.loadSample('clean', true));
     });
 
     // Also run immediately
