@@ -487,26 +487,7 @@ app.get('/', (c) => {
               <button type="button" class="preset-btn" onclick="setPreset('nplus1')">N+1 Query & Leaks</button>
               <button type="button" class="preset-btn" onclick="setPreset('clean')">Clean Diff (Pass)</button>
             </div>
-            <textarea id="diffInput">diff --git a/src/routes/users.ts b/src/routes/users.ts
-index 83a12b4..992f1c8 100644
---- a/src/routes/users.ts
-+++ b/src/routes/users.ts
-@@ -10,6 +10,14 @@ import { Database } from '../db/client.js';
- export async function searchUsers(db: Database, emailQuery: string) {
-+  // Raw unparameterized SQL concatenation
-+  const query = \`SELECT id, name, email, role FROM users WHERE email LIKE '\${emailQuery}%' AND is_active = true\`;
-+  const result = await db.query(query);
-+  return result.rows;
-+}
-
-diff --git a/src/config/auth.ts b/src/config/auth.ts
-index 45ef201..89aa102 100644
---- a/src/config/auth.ts
-+++ b/src/config/auth.ts
-@@ -1,5 +1,8 @@
--export const JWT_SECRET = process.env.JWT_SECRET;
-+export const JWT_SECRET = "super_secret_jwt_key_998124_do_not_share";
-+export const TOKEN_EXPIRY = '24h';</textarea>
+            <textarea id="diffInput" placeholder="Paste your git diff here, or click any preset above to test..."></textarea>
             <button id="runBtn" class="btn-action" style="width: 100%; margin-top: 0.75rem;" onclick="executeReview()">
               <span>⚡ Run Autonomous Multi-Agent Audit</span>
             </button>
