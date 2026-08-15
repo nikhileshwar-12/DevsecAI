@@ -166,7 +166,14 @@ app.get('/', (c) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DevSecAI Platform v2.0 – Autonomous Multi-Agent PR Review & Remediation</title>
+  <title>DevSecAI – Autonomous Multi-Agent Security Platform</title>
+  <meta name="description" content="Autonomous Multi-Agent GitHub PR Reviewer & Security Auditing Platform in TypeScript.">
+  
+  <!-- OpenGraph Meta Tags for LinkedIn / Social Previews -->
+  <meta property="og:title" content="DevSecAI – Autonomous Multi-Agent Security Platform">
+  <meta property="og:description" content="Autonomous Multi-Agent PR Reviewer & Security Auditing Platform with AST diff chunking, 1-click auto-remediation, and Vitest test synthesis.">
+  <meta property="og:url" content="https://devsecai-nikhil.onrender.com">
+  <meta property="og:type" content="website">
   <style>
     :root {
       --bg: #070a13;
@@ -631,7 +638,7 @@ index 72b381a..18ca9f2 100644
 +    const paymentMethod = await db.paymentMethods.findFirst({ where: { customerId: customer.id } });
 +    invoices.push({ order, customer, paymentMethod });
 +  }
-  
++  
    return invoices;
  }\`,
 
@@ -667,10 +674,19 @@ index 0000000..342a1bc
       }
     }
 
-    function loadSample(key) {
-      document.getElementById('diffInput').value = samples[key] || '';
-    }
-    loadSample('sqli');
+    window.loadSample = function(key) {
+      const el = document.getElementById('diffInput');
+      if (el) {
+        el.value = samples[key] || '';
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      window.loadSample('sqli');
+    });
+
+    // Also run immediately
+    window.loadSample('sqli');
 
     async function executeReview() {
       const diff = document.getElementById('diffInput').value.trim();
