@@ -5,7 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/Live_Demo-devsecai--nikhil.onrender.com-brightgreen.svg?logo=render)](https://devsecai-nikhil.onrender.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg?logo=node.js)](https://nodejs.org/)
-[![Vitest](https://img.shields.io/badge/Vitest-2.x-yellow.svg?logo=vitest)](https://vitest.dev/)
+[![Vitest](https://img.shields.io/badge/Vitest-3.x-yellow.svg?logo=vitest)](https://vitest.dev/)
 [![Hono](https://img.shields.io/badge/Hono-4.x-e36002.svg?logo=hono)](https://hono.dev/)
 [![SARIF v2.1.0](https://img.shields.io/badge/SARIF-2.1.0-purple.svg)](https://sarifweb.azurewebsites.net/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
